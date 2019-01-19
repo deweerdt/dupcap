@@ -1,2 +1,2 @@
 dupcap: dupcap.c
-	gcc -o $@ $< -lpcap -lpthread
+	gcc -O3 -g -Wall -Wextra -o $@ $< -lpcap -lpthread
