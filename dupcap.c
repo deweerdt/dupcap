@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <pcap.h>
 #include <pthread.h>
@@ -31,6 +32,41 @@ struct thread_config {
 	struct seen **others;
 };
 
+static void
+dump_line(FILE *out, char *data, int offset, int limit)
+{
+	int i;
+
+	fprintf(out, "%03x:", offset);
+	for (i = 0; i < limit; i++) {
+		fprintf(out, " %02x", (unsigned char)data[offset + i]);
+	}
+	for (i = 0; i + limit < 16; i++) {
+		fprintf(out, "   ");
+	}
+	fprintf(out, " ");
+	for (i = 0; i < limit; i++) {
+		fprintf(out, "%c", isprint(data[offset + i]) ? data[offset+i]:'.');
+	}
+	fprintf(out, "\n");
+}
+
+static void
+dump_zone(FILE *out, void *buf, int len)
+{
+	int i;
+	char *data = buf;
+
+	fprintf(out, "================================================================================\n");
+	for (i = 0; i < len; i += 16) {
+		int limit;
+		limit = 16;
+		if (i + limit > len)
+			limit = len - i;
+		dump_line(out, data, i, limit);
+	}
+	fprintf(out, "================================================================================\n");
+}
 /* https://github.com/wolkykim/qlibc/blob/03a8ce035391adf88d6d755f9a26967c16a1a567/src/utilities/qhash.c#L239 */
 static uint32_t qhashmurmur3_32(const void *data, size_t nbytes)
 {
@@ -102,7 +138,7 @@ static void add(struct thread_config *t, const u_char *packet, struct pcap_pkthd
 			struct seen other;
 			memcpy(&other, &t->others[o][idx], sizeof(other));
 			if (other.hash == h && other.len == packet_header.caplen && !memcmp(packet, other.packet, packet_header.caplen)) {
-				fprintf(stderr, "%s:%d\n", __func__, __LINE__);
+				dump_zone(stderr, other.packet, other.len);
 			}
 		}
 		o++;
@@ -114,7 +150,7 @@ static void add(struct thread_config *t, const u_char *packet, struct pcap_pkthd
 	t->seen[idx].len = packet_header.caplen;
 
 	t->to_remove[t->tr_idx] = idx;
-	t->tr_idx = (t->tr_idx + 1) % ARRAY_SIZE(t->seen);
+	t->tr_idx = (t->tr_idx + 1) % ARRAY_SIZE(t->to_remove);
 }
 
 static void *cap(void *a)
